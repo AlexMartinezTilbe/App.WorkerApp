@@ -26,7 +26,6 @@ public class Worker : BackgroundService
         await Task.Run(() =>
         {
             doWorkZonesSite(stoppingToken);
-            //doWorkConfig(stoppingToken);
         });
     }
 
@@ -50,17 +49,6 @@ public class Worker : BackgroundService
             {
                 _logger.LogInformation("Worker err at: {time} -> ERROR: {1}", DateTimeOffset.Now, ex.Message);
             }
-            _logger.LogInformation("Worker end at: {time} -> INFO: {1}", DateTimeOffset.Now, "");
-        }
-    }
-    private async void doWorkConfig(CancellationToken stoppingToken)
-    {
-        var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
-        while (await timer.WaitForNextTickAsync(stoppingToken))
-        {
-            _logger.LogInformation("Worker running at: {time} ", DateTimeOffset.Now);
-            //var r = await BackgroundServices.FuncDocumenttype();
-            await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
             _logger.LogInformation("Worker end at: {time} -> INFO: {1}", DateTimeOffset.Now, "");
         }
     }
