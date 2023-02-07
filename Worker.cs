@@ -4,6 +4,7 @@ using System.Data.SqlClient;
 using System.Data;
 using App.WorkerApp.Models;
 using Microsoft.Extensions.Options;
+using QV_Altipal_TradeGoBackend.DTO;
 
 namespace App.WorkerApp;
 
@@ -34,20 +35,24 @@ public class Worker : BackgroundService
         var timer = new PeriodicTimer(TimeSpan.FromMinutes(15));
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            var values_saleZones = _cache.StringGet(_server.Keys(pattern: "SalesZone*").ToArray()).Select(d => JsonConvert.DeserializeObject<SalesZone>(d)).ToList();
+            string sKey = $"LoggedZones";
 
-            var activezones = values_saleZones.Where(z => z.Active && z.Site.Count > 1 && z.Site.Any(s => s.InventLocationId.EndsWith("08"))).ToList();
-            var dateRoute = GetRoute();
-            try
+            var loggedZones = _cache.StringGet(sKey);
+            if (!loggedZones.IsNullOrEmpty)
             {
-                activezones.ForEach(z =>
+                var dataInList = JsonConvert.DeserializeObject<List<SalesZoneLogged>>(loggedZones);
+                _logger.LogInformation("Zonas activas: {0}", dataInList.Count);
+                try
                 {
-                    Task.Run(() => GetPricesByZoneRoute(z.SalesZoneId, dateRoute.Route));
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogInformation("Worker err at: {time} -> ERROR: {1}", DateTimeOffset.Now, ex.Message);
+                    dataInList.ForEach(z =>
+                    {
+                        Task.Run(() => GetPricesByZoneRoute(z.SalesZone, z.Route));
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogInformation("Worker err at: {time} -> ERROR: {1}", DateTimeOffset.Now, ex.Message);
+                }
             }
             _logger.LogInformation("Worker end at: {time} -> INFO: {1}", DateTimeOffset.Now, "");
         }
