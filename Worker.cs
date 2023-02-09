@@ -24,6 +24,7 @@ public class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _logger.LogInformation("Periodicidad : {0} minutos", WorkerProps.Time);
         await Task.Run(() =>
         {
             doWorkZonesSite(stoppingToken);
@@ -32,30 +33,36 @@ public class Worker : BackgroundService
 
     private async void doWorkZonesSite(CancellationToken stoppingToken)
     {
-        var timer = new PeriodicTimer(TimeSpan.FromMinutes(15));
+        //StartWork();
+        var timer = new PeriodicTimer(TimeSpan.FromMinutes(WorkerProps.Time));
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            string sKey = $"LoggedZones";
-
-            var loggedZones = _cache.StringGet(sKey);
-            if (!loggedZones.IsNullOrEmpty)
-            {
-                var dataInList = JsonConvert.DeserializeObject<List<SalesZoneLogged>>(loggedZones);
-                _logger.LogInformation("Zonas activas: {0}", dataInList.Count);
-                try
-                {
-                    dataInList.ForEach(z =>
-                    {
-                        Task.Run(() => GetPricesByZoneRoute(z.SalesZone, z.Route));
-                    });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogInformation("Worker err at: {time} -> ERROR: {1}", DateTimeOffset.Now, ex.Message);
-                }
-            }
-            _logger.LogInformation("Worker end at: {time} -> INFO: {1}", DateTimeOffset.Now, "");
+            StartWork();
         }
+    }
+
+    private void StartWork()
+    {
+        string sKey = $"LoggedZones";
+
+        var loggedZones = _cache.StringGet(sKey);
+        if (!loggedZones.IsNullOrEmpty)
+        {
+            var dataInList = JsonConvert.DeserializeObject<List<SalesZoneLogged>>(loggedZones).Distinct().ToList();
+            _logger.LogInformation("Zonas activas: {0}", dataInList.Count);
+            try
+            {
+                dataInList.ForEach(z =>
+                {
+                    Task.Run(() => GetPricesByZoneRoute(z.SalesZone, z.Route));
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogInformation("Worker err at: {time} -> ERROR: {1}", DateTimeOffset.Now, ex.Message);
+            }
+        }
+        _logger.LogInformation("Worker end at: {time} -> INFO: {1}", DateTimeOffset.Now, "");
     }
 
     private async Task GetPricesByZoneRoute(string sZona, int iRuta)
@@ -64,7 +71,7 @@ public class Worker : BackgroundService
         {
             SqlCommand sqlCommand = new SqlCommand("[dbo].[SP_APISalesPriceFromSalesZoneRouteNumWOutCust]", con);
             sqlCommand.CommandType = CommandType.StoredProcedure;
-            sqlCommand.CommandTimeout = 3600;
+            sqlCommand.CommandTimeout = 600;
             sqlCommand.Parameters.AddWithValue("@SalesZoneId", sZona);
             sqlCommand.Parameters.AddWithValue("@RouteNum", iRuta);
             var table = new DataTable();
@@ -73,7 +80,7 @@ public class Worker : BackgroundService
             {
                 string sKeyList = $"{sZona}Z{iRuta}R-SalesPrice";
                 var jsonResult = JsonConvert.SerializeObject(table);
-                await _cache.StringSetAsync(sKeyList, jsonResult.ToString());
+                await _cache.StringSetAsync(sKeyList, jsonResult.ToString(), TimeSpan.FromHours(24 - DateTime.Now.Hour));
             }
             con.Close();
         }
